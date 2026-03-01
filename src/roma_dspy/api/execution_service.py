@@ -110,7 +110,7 @@ class ExecutionService:
         self,
         goal: str,
         max_depth: int = 2,
-        config_profile: str = "default",
+        config_profile: str = "general",
         config_overrides: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> str:

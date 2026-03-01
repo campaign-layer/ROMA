@@ -20,7 +20,7 @@ class SolveRequest(BaseModel):
         default=2, ge=0, le=10, description="Maximum recursion depth"
     )
     config_profile: str = Field(
-        default="default", description="Configuration profile name (required)"
+        default="general", description="Configuration profile name (required)"
     )
     config_overrides: Optional[Dict[str, Any]] = Field(
         default=None, description="Configuration overrides"
@@ -58,10 +58,7 @@ class SolveRequest(BaseModel):
             data["config_profile"] = incoming_profile
 
         if not data.get("config_profile"):
-            data["config_profile"] = "default"
-
-        if data["config_profile"] == "general":
-            data["config_profile"] = "default"
+            data["config_profile"] = "general"
 
         metadata = data.get("metadata")
         if not isinstance(metadata, dict):

@@ -7,7 +7,7 @@ agents:
   # Atomizer: Fast decision-making with Gemini Flash
   atomizer:
     llm:
-      model: openrouter/google/gemini-2.5-flash
+      model: google/gemini-2.5-flash
       temperature: 0.4
       max_tokens: 8000
     # Load atomizer seed prompt and demos for improved task classification
@@ -17,7 +17,7 @@ agents:
   # Planner: Strategic planning with Gemini Flash
   planner:
     llm:
-      model: openrouter/google/gemini-2.5-flash
+      model: google/gemini-2.5-flash
       temperature: 0.4
       max_tokens: 32000
     # Load planner seed prompt and demos for improved task decomposition
@@ -26,21 +26,10 @@ agents:
     agent_config:
       max_subtasks: 12
 
-    toolkits:
-      - class_name: WebSearchToolkit
-        enabled: true
-        toolkit_config:
-          model: openrouter/openai/gpt-5-mini
-          # No search_engine = OpenRouter native search
-          max_results: 5
-          search_context_size: medium
-          temperature: 1.0  # Required for GPT-5 reasoning models
-          max_tokens: 16000  # Required for GPT-5 reasoning models
-
   # Default Executor (fallback for unmapped task types)
   executor:
     llm:
-      model: openrouter/anthropic/claude-sonnet-4.5
+      model: google/gemini-2.5-flash
       temperature: 0.6
       max_tokens: 64000
     prediction_strategy: react
@@ -50,38 +39,10 @@ agents:
     agent_config:
       max_executions: 10
 
-    # Default fundamental toolkits
-    toolkits:
-      - class_name: E2BToolkit
-        enabled: true
-        toolkit_config:
-          timeout: 600
-          max_lifetime_hours: 23.5
-          auto_reinitialize: true
-
-      - class_name: WebSearchToolkit
-        enabled: true
-        toolkit_config:
-          model: openrouter/openai/gpt-5-mini
-          # No search_engine = OpenRouter native search
-          max_results: 5
-          search_context_size: medium
-          temperature: 1.0  # Required for GPT-5 reasoning models
-          max_tokens: 16000  # Required for GPT-5 reasoning models
-
-      - class_name: FileToolkit
-        enabled: true
-        toolkit_config:
-          enable_delete: false
-          max_file_size: 10485760  # 10MB
-
-      - class_name: CalculatorToolkit
-        enabled: true
-
   # Aggregator: Synthesis with Gemini Flash
   aggregator:
     llm:
-      model: openrouter/google/gemini-2.5-flash
+      model: google/gemini-2.5-flash
       temperature: 0.0
       max_tokens: 32000
     # Load aggregator seed prompt for improved result synthesis
@@ -91,7 +52,7 @@ agents:
   # Verifier: Validation with Gemini Flash
   verifier:
     llm:
-      model: openrouter/google/gemini-2.5-flash
+      model: google/gemini-2.5-flash
       temperature: 0.0
       max_tokens: 16000
     # Load verifier seed prompt and demos for improved output validation
@@ -135,7 +96,7 @@ storage:
   max_file_size: 104857600  # 100MB
 
   postgres:
-    enabled: ${oc.env:POSTGRES_ENABLED,true}
+    enabled: ${oc.env:POSTGRES_ENABLED,false}
     connection_url: ${oc.env:DATABASE_URL,postgresql+asyncpg://localhost/roma_dspy}
     pool_size: 10
     max_overflow: 20

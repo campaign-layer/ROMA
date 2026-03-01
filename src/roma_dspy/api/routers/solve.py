@@ -6,6 +6,8 @@ import os
 from fastapi import APIRouter, HTTPException, Request
 
 from roma_dspy.api.schemas import SolveRequest, SolveResponse
+from roma_dspy.config.manager import ConfigManager
+from roma_dspy.core.engine.solve import RecursiveSolver
 
 router = APIRouter()
 
@@ -17,6 +19,30 @@ def _extract_final_text(execution) -> str | None:
         if result is not None:
             return str(result)
     return None
+
+
+async def _solve_directly(solve_request: SolveRequest) -> SolveResponse:
+    config_manager = ConfigManager()
+    config = config_manager.load_config(
+        profile=solve_request.config_profile,
+        overrides=solve_request.config_overrides or {},
+    )
+
+    solver = RecursiveSolver(config=config)
+    result = await solver.async_solve(solve_request.goal, depth=0)
+    final_text = result.result if hasattr(result, "result") and result.result else str(result)
+    status = result.status.value if hasattr(result, "status") else "completed"
+
+    return SolveResponse(
+        execution_id=getattr(result, "execution_id", "direct"),
+        status=status,
+        output=str(final_text),
+        answer=str(final_text),
+        result={
+            "final_answer": str(final_text),
+            "status": status,
+        },
+    )
 
 
 @router.post("/solve", response_model=SolveResponse)
@@ -34,10 +60,7 @@ async def solve(
     app_state = request.app.state.app_state
 
     if not app_state.execution_service:
-        raise HTTPException(
-            status_code=503,
-            detail="ExecutionService not available (storage may be disabled)",
-        )
+        return await _solve_directly(solve_request)
 
     execution_id = await app_state.execution_service.start_execution(
         goal=solve_request.goal,
