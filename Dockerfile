@@ -81,7 +81,7 @@ EXPOSE 8000
 
 # Optimized health check (less frequent, faster timeout)
 HEALTHCHECK --interval=60s --timeout=5s --start-period=40s --retries=2 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD sh -c 'curl -f http://localhost:${PORT:-8000}/health || exit 1'
 
 # Default command
-CMD ["roma-dspy", "server", "start", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+CMD sh -c 'roma-dspy server start --host 0.0.0.0 --port ${PORT:-8000} --workers ${API_WORKERS:-4}'
