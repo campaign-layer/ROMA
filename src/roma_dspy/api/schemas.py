@@ -1,9 +1,8 @@
 """Pydantic schemas for API requests and responses."""
 
 from datetime import datetime
-from enum import Enum
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ============================================================================
@@ -29,6 +28,54 @@ class SolveRequest(BaseModel):
     metadata: Optional[Dict[str, Any]] = Field(
         default_factory=dict, description="Additional metadata"
     )
+    context: Optional[str] = Field(
+        default=None,
+        description="Optional textual context from the caller",
+    )
+    actions: Optional[List[str]] = Field(
+        default=None,
+        description="Optional action/tool hints from the caller",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_maitrix_payload(cls, values: Any) -> Any:
+        """Accept the flexible payload shape used by mAItrix's ROMA client."""
+        if not isinstance(values, dict):
+            return values
+
+        data = dict(values)
+
+        if not data.get("goal"):
+            for key in ("task", "input", "query", "prompt"):
+                candidate = data.get(key)
+                if isinstance(candidate, str) and candidate.strip():
+                    data["goal"] = candidate.strip()
+                    break
+
+        incoming_profile = data.get("profile")
+        if not data.get("config_profile") and incoming_profile:
+            data["config_profile"] = incoming_profile
+
+        if not data.get("config_profile"):
+            data["config_profile"] = "default"
+
+        if data["config_profile"] == "general":
+            data["config_profile"] = "default"
+
+        metadata = data.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+
+        if data.get("context") is not None:
+            metadata.setdefault("context", data["context"])
+        if data.get("actions") is not None:
+            metadata.setdefault("actions", data["actions"])
+        if incoming_profile is not None:
+            metadata.setdefault("requested_profile", incoming_profile)
+
+        data["metadata"] = metadata
+        return data
 
 
 class CheckpointRestoreRequest(BaseModel):
@@ -95,12 +142,27 @@ class ExecutionResponse(BaseModel):
     updated_at: datetime
     config: Optional[Dict[str, Any]] = None
     metadata: Dict[str, Any]
+    output: Optional[str] = None
+    answer: Optional[str] = None
+    result: Optional[Dict[str, Any]] = None
 
 
 class ExecutionDetailResponse(ExecutionResponse):
     """Extended execution response with statistics."""
 
     statistics: Optional[DAGStatisticsResponse] = None
+
+
+class SolveResponse(BaseModel):
+    """Compatibility response for synchronous /solve callers."""
+
+    execution_id: str
+    status: str
+    output: Optional[str] = None
+    answer: Optional[str] = None
+    result: Optional[Dict[str, Any]] = None
+    confidence: Optional[float] = None
+    suggested_action: Optional[str] = None
 
 
 class ExecutionListResponse(BaseModel):

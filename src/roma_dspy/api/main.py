@@ -178,6 +178,7 @@ def create_app(enable_rate_limit: bool = True) -> FastAPI:
     # Register routers
     from roma_dspy.api.routers import (
         health,
+        solve,
         executions,
         checkpoints,
         metrics,
@@ -185,6 +186,7 @@ def create_app(enable_rate_limit: bool = True) -> FastAPI:
     )
 
     app.include_router(health.router, tags=["health"])
+    app.include_router(solve.router, prefix="/api/v1", tags=["solve"])
     app.include_router(executions.router, prefix="/api/v1", tags=["executions"])
     app.include_router(checkpoints.router, prefix="/api/v1", tags=["checkpoints"])
     app.include_router(metrics.router, prefix="/api/v1", tags=["metrics"])

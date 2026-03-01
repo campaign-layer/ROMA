@@ -34,6 +34,13 @@ def execution_to_response(
     Returns:
         ExecutionResponse schema
     """
+    final_result = execution.final_result or {}
+    final_text = None
+    if isinstance(final_result, dict):
+        candidate = final_result.get("result")
+        if candidate is not None:
+            final_text = str(candidate)
+
     return ExecutionResponse(
         execution_id=execution.execution_id,
         status=execution.status,
@@ -48,6 +55,9 @@ def execution_to_response(
         updated_at=execution.updated_at,
         config=execution.config if include_config else None,
         metadata=execution.execution_metadata,
+        output=final_text,
+        answer=final_text,
+        result={"final_answer": final_text, **final_result} if final_text else final_result or None,
     )
 
 
