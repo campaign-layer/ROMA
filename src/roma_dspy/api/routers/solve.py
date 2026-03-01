@@ -1,99 +1,109 @@
 """Compatibility solve endpoint for synchronous ROMA callers."""
 
-import asyncio
-import os
+from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request
+import uuid
+from typing import Any
+
+import dspy
+from fastapi import APIRouter
+from loguru import logger
 
 from roma_dspy.api.schemas import SolveRequest, SolveResponse
 from roma_dspy.config.manager import ConfigManager
-from roma_dspy.core.engine.solve import RecursiveSolver
 
 router = APIRouter()
 
 
-def _extract_final_text(execution) -> str | None:
-    final_result = getattr(execution, "final_result", None) or {}
-    if isinstance(final_result, dict):
-        result = final_result.get("result")
-        if result is not None:
-            return str(result)
-    return None
+class MaitrixGuidanceSignature(dspy.Signature):
+    """Generate compact planning guidance for another agent.
+
+    Return plain text with these exact sections:
+    Plan:
+    Risks:
+    SuggestedAction:
+
+    Keep it concise and action-oriented. Do not answer the task directly.
+    """
+
+    request: str = dspy.InputField(description="Task or query that needs guidance")
+    context: str = dspy.InputField(description="Relevant prior context")
+    actions: str = dspy.InputField(description="Optional tool or action hints")
+    guidance: str = dspy.OutputField(description="Short planning guidance")
 
 
-async def _solve_directly(solve_request: SolveRequest) -> SolveResponse:
-    config_manager = ConfigManager()
-    config = config_manager.load_config(
-        profile=solve_request.config_profile,
-        overrides=solve_request.config_overrides or {},
+def _build_lm(llm_config: Any) -> dspy.LM:
+    """Build a DSPy LM from ROMA LLM config."""
+    lm_kwargs: dict[str, Any] = {
+        "temperature": llm_config.temperature,
+        "max_tokens": llm_config.max_tokens,
+        "timeout": llm_config.timeout,
+        "num_retries": llm_config.num_retries,
+        "cache": llm_config.cache,
+    }
+
+    if llm_config.api_key:
+        lm_kwargs["api_key"] = llm_config.api_key
+    if llm_config.base_url:
+        lm_kwargs["base_url"] = llm_config.base_url
+    if llm_config.rollout_id is not None:
+        lm_kwargs["rollout_id"] = llm_config.rollout_id
+    if llm_config.extra_body:
+        lm_kwargs["extra_body"] = llm_config.extra_body
+
+    return dspy.LM(llm_config.model, **lm_kwargs)
+
+
+async def _generate_guidance(solve_request: SolveRequest) -> str:
+    """Run a lightweight planner call for mAItrix guidance."""
+    config = ConfigManager().load_config(profile=solve_request.config_profile)
+    planner_config = config.agents.planner.llm
+
+    predictor = dspy.Predict(MaitrixGuidanceSignature)
+    predictor.lm = _build_lm(planner_config)
+
+    request_text = solve_request.goal.strip()
+    context_text = solve_request.context.strip() if solve_request.context else "None"
+    actions_text = (
+        ", ".join(solve_request.actions)
+        if solve_request.actions
+        else "No tool hints provided"
     )
 
-    solver = RecursiveSolver(config=config)
-    result = await solver.async_solve(solve_request.goal, depth=0)
-    final_text = result.result if hasattr(result, "result") and result.result else str(result)
-    status = result.status.value if hasattr(result, "status") else "completed"
+    prediction = await predictor.acall(
+        request=request_text,
+        context=context_text,
+        actions=actions_text,
+    )
+    guidance = str(getattr(prediction, "guidance", "")).strip()
 
-    return SolveResponse(
-        execution_id=getattr(result, "execution_id", "direct"),
-        status=status,
-        output=str(final_text),
-        answer=str(final_text),
-        result={
-            "final_answer": str(final_text),
-            "status": status,
-        },
+    if guidance:
+        return guidance
+
+    logger.warning("Planner returned empty guidance; using fallback template")
+    return (
+        "Plan:\n"
+        f"- Clarify the task scope: {request_text}\n"
+        "- Break the work into the fewest necessary steps.\n"
+        "Risks:\n"
+        "- Missing context or tool assumptions may derail execution.\n"
+        "SuggestedAction:\n"
+        "- Start with the highest-confidence next step and verify the result."
     )
 
 
 @router.post("/solve", response_model=SolveResponse)
-async def solve(
-    request: Request,
-    solve_request: SolveRequest,
-) -> SolveResponse:
-    """
-    Run a ROMA solve request with a short synchronous wait window.
+async def solve(solve_request: SolveRequest) -> SolveResponse:
+    """Run a synchronous guidance request for mAItrix callers."""
+    guidance = await _generate_guidance(solve_request)
 
-    If the execution finishes within the configured wait budget, return the
-    final text directly. Otherwise return an execution_id so the caller can
-    poll `/api/v1/executions/{id}`.
-    """
-    app_state = request.app.state.app_state
-
-    if not app_state.execution_service:
-        return await _solve_directly(solve_request)
-
-    execution_id = await app_state.execution_service.start_execution(
-        goal=solve_request.goal,
-        max_depth=solve_request.max_depth,
-        config_profile=solve_request.config_profile,
-        config_overrides=solve_request.config_overrides,
-        metadata=solve_request.metadata,
-    )
-
-    sync_wait_ms = int(os.getenv("ROMA_SYNC_WAIT_MS", "12000"))
-    deadline = asyncio.get_running_loop().time() + max(sync_wait_ms, 0) / 1000
-
-    while asyncio.get_running_loop().time() < deadline:
-        execution = await app_state.storage.get_execution(execution_id)
-        if execution and execution.status in {"completed", "failed", "cancelled", "canceled"}:
-            final_text = _extract_final_text(execution)
-            result = getattr(execution, "final_result", None) or None
-            wrapped_result = {"final_answer": final_text, **result} if final_text and isinstance(result, dict) else result
-            return SolveResponse(
-                execution_id=execution_id,
-                status=execution.status,
-                output=final_text,
-                answer=final_text,
-                result=wrapped_result,
-            )
-
-        await asyncio.sleep(0.4)
-
-    execution = await app_state.storage.get_execution(execution_id)
     return SolveResponse(
-        execution_id=execution_id,
-        status=execution.status if execution else "running",
-        output=None,
-        answer=None,
-        result=None,
+        execution_id=f"direct-{uuid.uuid4()}",
+        status="completed",
+        output=guidance,
+        answer=guidance,
+        result={
+            "final_answer": guidance,
+            "status": "completed",
+        },
     )
