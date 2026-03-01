@@ -9,8 +9,8 @@
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
 
 # Install build dependencies in single layer
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+RUN --mount=type=cache,id=roma-apt-cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=roma-apt-lib,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     git \
@@ -24,7 +24,7 @@ COPY src/roma_dspy/__init__.py src/roma_dspy/
 
 # Install dependencies with uv cache mount (much faster on rebuilds)
 # Install all features for production deployment
-RUN --mount=type=cache,target=/root/.cache/uv \
+RUN --mount=type=cache,id=roma-uv-cache,target=/root/.cache/uv \
     uv pip install --system -e ".[all]"
 
 # Copy rest of source for final install
@@ -37,8 +37,8 @@ RUN uv pip install --system --no-deps -e .
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 # Install all runtime dependencies in single layer, clean up in same layer
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+RUN --mount=type=cache,id=roma-runtime-apt-cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=roma-runtime-apt-lib,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
