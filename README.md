@@ -249,7 +249,7 @@ print(result)
 ```
 
 **What's included:**
-- ✅ All core modules (Atomizer, Planner, Executor, Aggregator, Verifier)
+- ✅ All core modules (Atomizer, Planner, Executor, Aggregator , Verifier)
 - ✅ All DSPy prediction strategies
 - ✅ File-based storage (no database needed)
 - ✅ Core toolkits (Calculator, File operations)
